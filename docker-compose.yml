@@ -1,0 +1,6 @@
+version: "3.0"
+services:
+  battleship:
+    image: battleship:latest
+    ports:
+      - "8443:8443"
