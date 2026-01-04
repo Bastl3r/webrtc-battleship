@@ -5,32 +5,17 @@ services:
     image: coturn/coturn:latest
     platform: linux/arm64
     restart: unless-stopped
-    networks:
-      - webrtc-network
-    ports:
-      - "3478:3478/udp"
-      - "3478:3478/tcp"
-      - "5349:5349/udp"
-      - "49152-49200:49152-49200/udp"
+    network_mode: "host"
     volumes:
       - ./coturn.conf:/etc/coturn/turnserver.conf:ro
       - ./certs:/etc/coturn/certs:ro
       - ./logs:/var/log/coturn
       - ./entrypoint.sh:/entrypoint.sh:rw
     entrypoint: ["sh","/entrypoint.sh"] # enables providing External IP dynamically
-    # healthcheck:
-    #   test: ["CMD-SHELL", "turnutils_uclient -t -u webrtc -w webrtcPassword123 127.0.0.1 3478 | grep -q 'Done'"]
-    #   interval: 60s
-    #   timeout: 10s
-    #   retries: 3
-    #   start_period: 20s
 
 
   battleship:
     image: battleship:latest
-    # depends_on:
-    #   turn:
-    #     condition: service_healthy
     restart: unless-stopped
     networks:
       - webrtc-network
