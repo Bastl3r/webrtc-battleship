@@ -446,6 +446,7 @@
                 <h3>Share this key with your peer:</h3>
                 <span id="localKey" class="sdp-display key-loading">Generating key...</span>
                 <button id="btnCopyOfferKey">📋 Copy Key to Clipboard</button>
+                <button id="refreshAnswer" class="btn btn-secondary mt-2">Refresh</button>
                 <p style="text-align: center; color: #666; margin: 15px 0;">Waiting for peer to accept the offer...</p>
             </div>
             <!-- Answerer: Input for Offer Key -->
@@ -1554,6 +1555,19 @@
             }
         };
 
+        document.getElementById("refreshAnswer").addEventListener(
+            "click",
+            async () => {
+                const key = document.getElementById("localKey").textContent;
+                if (!key) {
+                    showToast("No session key available.", "error");
+                    return;
+                }
+
+                await startPollingForAnswer(key);
+            }
+        );
+
         document.getElementById("btnSetRemoteAnswerKey").onclick = async () => {
             const key = document.getElementById("remoteKey2").value.trim();
 
@@ -1627,6 +1641,7 @@
 
                         await candidatePromise;
                         console.log('Answerer ICE gathering complete with', gatheredCandidates, 'total candidates, now storing answer with all candidates');
+                        showToast('Answerer ICE gathering complete with', gatheredCandidates, 'total candidates, now storing answer with all candidates', "success");
 
                         // Auto-create answer and overwrite the offer SDP with it
                         logStatus("Auto-storing answer SDP to overwrite offer...");
