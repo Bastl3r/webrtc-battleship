@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Battleship P2P (WebRTC + Base64 SDP)</title>
+    <title>Battleship P2P (WebRTC)</title>
     <style>
         body {
             font-family: sans-serif;
@@ -494,1251 +494,1236 @@
                 <div class="ships-legend" id="oppShipsLegend"></div>
             </div>
         </div>
-        <div id="gameControlsContainer"><button id="btnPlaceShips">Place Random Ships</button><button id="btnReady">Send
-                Ready</button></div>
-        <div id="gameInfo"></div>
-    </div>
-    <script>
-        /* -----------------------------------------------------------
-           BATTLESHIP GAME LOGIC
-        ----------------------------------------------------------- */
+        <div id="gameControlsContainer">
+            <div id="gameInfo"></div>
+        </div>
+        <script>
+            /* -----------------------------------------------------------
+               BATTLESHIP GAME LOGIC
+            ----------------------------------------------------------- */
 
-        const BOARD_SIZE = 10;
+            const BOARD_SIZE = 10;
 
-        const SHIPS = [{
-            name: "Aircraft Carrier", shape: ["xxxx", "oxxx"]
-        }
-
-            ,
-        {
-            name: "Battleship", shape: ["xxxx"]
-        }
-
-            ,
-        {
-            name: "Cruiser", shape: ["xxx"]
-        }
-
-            ,
-        {
-            name: "Speedboat", shape: ["x"]
-        }
-
-            ,
-        {
-            name: "Destroyer", shape: ["xx"]
-        }
-
-            ,
-        {
-            name: "Submarine", shape: ["xxx"]
-        }
-        ];
-
-        // Calculate total cells needed for ships
-        const TOTAL_SHIP_CELLS = SHIPS.reduce((sum, ship) => {
-            return sum + ship.shape.reduce((s, row) => s + row.split('x').length - 1, 0);
-        }
-
-            , 0);
-
-        let ownBoard = createEmptyBoard();
-        let oppBoard = createEmptyBoard();
-        let ownHitsRemaining = TOTAL_SHIP_CELLS;
-        let oppHitsRemaining = TOTAL_SHIP_CELLS;
-        let opponentReady = false;
-        let isMyTurn = false;
-        let weAreReady = false;
-        let selectedShips = new Set();
-        let shipsPlaced = false;
-        let ownShips = []; // Track ship positions for own board
-        let oppShips = []; // Track ship positions for opponent board
-        let ownSunkShips = new Set(); // Track sunk ships for own board
-        let oppSunkShips = new Set(); // Track sunk ships for opponent board
-        let currentShipPlacements = null; // Store ship placements to sync preview with actual board
-
-        const ownBoardElem = document.getElementById("ownBoard");
-        const oppBoardElem = document.getElementById("oppBoard");
-        const gameInfo = document.getElementById("gameInfo");
-
-        function createEmptyBoard() {
-            return Array.from({
-                length: BOARD_SIZE
+            const SHIPS = [{
+                name: "Aircraft Carrier", shape: ["xxxx", "oxxx"]
             }
 
-                , () => Array.from({
+                ,
+            {
+                name: "Battleship", shape: ["xxxx"]
+            }
+
+                ,
+            {
+                name: "Cruiser", shape: ["xxx"]
+            }
+
+                ,
+            {
+                name: "Speedboat", shape: ["x"]
+            }
+
+                ,
+            {
+                name: "Destroyer", shape: ["xx"]
+            }
+
+                ,
+            {
+                name: "Submarine", shape: ["xxx"]
+            }
+            ];
+
+            // Calculate total cells needed for ships
+            const TOTAL_SHIP_CELLS = SHIPS.reduce((sum, ship) => {
+                return sum + ship.shape.reduce((s, row) => s + row.split('x').length - 1, 0);
+            }
+
+                , 0);
+
+            let ownBoard = createEmptyBoard();
+            let oppBoard = createEmptyBoard();
+            let ownHitsRemaining = TOTAL_SHIP_CELLS;
+            let oppHitsRemaining = TOTAL_SHIP_CELLS;
+            let opponentReady = false;
+            let isMyTurn = false;
+            let weAreReady = false;
+            let selectedShips = new Set();
+            let shipsPlaced = false;
+            let ownShips = []; // Track ship positions for own board
+            let oppShips = []; // Track ship positions for opponent board
+            let ownSunkShips = new Set(); // Track sunk ships for own board
+            let oppSunkShips = new Set(); // Track sunk ships for opponent board
+            let currentShipPlacements = null; // Store ship placements to sync preview with actual board
+
+            const ownBoardElem = document.getElementById("ownBoard");
+            const oppBoardElem = document.getElementById("oppBoard");
+            const gameInfo = document.getElementById("gameInfo");
+
+            function createEmptyBoard() {
+                return Array.from({
                     length: BOARD_SIZE
                 }
 
-                    , () => ({
-                        ship: false, hit: false, miss: false
-                    })));
-        }
+                    , () => Array.from({
+                        length: BOARD_SIZE
+                    }
 
-        function renderBoards() {
-            // Own board
-            ownBoardElem.innerHTML = "";
+                        , () => ({
+                            ship: false, hit: false, miss: false
+                        })));
+            }
 
-            for (let r = 0; r < BOARD_SIZE; r++) {
-                const tr = document.createElement("tr");
+            function renderBoards() {
+                // Own board
+                ownBoardElem.innerHTML = "";
 
-                for (let c = 0; c < BOARD_SIZE; c++) {
-                    const td = document.createElement("td");
-                    const cell = ownBoard[r][c];
-                    if (cell.ship) td.classList.add("own-ship");
-                    if (cell.hit) td.classList.add("hit");
-                    if (cell.miss) td.classList.add("miss");
-                    tr.appendChild(td);
+                for (let r = 0; r < BOARD_SIZE; r++) {
+                    const tr = document.createElement("tr");
+
+                    for (let c = 0; c < BOARD_SIZE; c++) {
+                        const td = document.createElement("td");
+                        const cell = ownBoard[r][c];
+                        if (cell.ship) td.classList.add("own-ship");
+                        if (cell.hit) td.classList.add("hit");
+                        if (cell.miss) td.classList.add("miss");
+                        tr.appendChild(td);
+                    }
+
+                    ownBoardElem.appendChild(tr);
                 }
 
-                ownBoardElem.appendChild(tr);
-            }
+                // Opponent board
+                oppBoardElem.innerHTML = "";
 
-            // Opponent board
-            oppBoardElem.innerHTML = "";
+                for (let r = 0; r < BOARD_SIZE; r++) {
+                    const tr = document.createElement("tr");
 
-            for (let r = 0; r < BOARD_SIZE; r++) {
-                const tr = document.createElement("tr");
+                    for (let c = 0; c < BOARD_SIZE; c++) {
+                        const td = document.createElement("td");
+                        const cell = oppBoard[r][c];
+                        if (cell.hit) td.classList.add("hit");
+                        if (cell.miss) td.classList.add("miss");
 
-                for (let c = 0; c < BOARD_SIZE; c++) {
-                    const td = document.createElement("td");
-                    const cell = oppBoard[r][c];
-                    if (cell.hit) td.classList.add("hit");
-                    if (cell.miss) td.classList.add("miss");
+                        td.addEventListener("click", () => {
+                            if (!dataChannel || dataChannel.readyState !== "open") return;
+                            if (!weAreReady || !opponentReady) return;
+                            if (!isMyTurn) return;
+                            if (cell.hit || cell.miss) return;
 
-                    td.addEventListener("click", () => {
-                        if (!dataChannel || dataChannel.readyState !== "open") return;
-                        if (!weAreReady || !opponentReady) return;
-                        if (!isMyTurn) return;
-                        if (cell.hit || cell.miss) return;
-
-                        sendMessage({
-                            type: "attack", row: r, col: c
-                        });
-                    });
-
-                    tr.appendChild(td);
-                }
-
-                oppBoardElem.appendChild(tr);
-            }
-        }
-
-        function setGameInfo(msg) {
-            gameInfo.textContent = msg;
-        }
-
-        function placeRandomShips() {
-            ownBoard = createEmptyBoard();
-
-            for (const ship of SHIPS) {
-                let placed = false;
-
-                while (!placed) {
-                    const startRow = Math.floor(Math.random() * BOARD_SIZE);
-                    const startCol = Math.floor(Math.random() * BOARD_SIZE);
-                    const rotate = Math.random() < 0.5;
-
-                    const shape = rotate ? rotateShape(ship.shape) : ship.shape;
-
-                    // Check if ship fits
-                    if (startRow + shape.length > BOARD_SIZE) continue;
-                    if (startCol + shape[0].length > BOARD_SIZE) continue;
-
-                    // Check for collisions
-                    let canPlace = true;
-
-                    for (let r = 0; r < shape.length; r++) {
-                        for (let c = 0; c < shape[r].length; c++) {
-                            if (shape[r][c] === 'x') {
-                                if (ownBoard[startRow + r][startCol + c].ship) {
-                                    canPlace = false;
-                                    break;
-                                }
-                            }
-                        }
-
-                        if (!canPlace) break;
-                    }
-
-                    if (!canPlace) continue;
-
-                    // Place ship
-                    for (let r = 0; r < shape.length; r++) {
-                        for (let c = 0; c < shape[r].length; c++) {
-                            if (shape[r][c] === 'x') {
-                                ownBoard[startRow + r][startCol + c].ship = true;
-                            }
-                        }
-                    }
-
-                    placed = true;
-                }
-            }
-
-            renderBoards();
-            setGameInfo("Ships placed. Click 'Send Ready'.");
-        }
-
-        function rotateShape(shape) {
-            const height = shape.length;
-            const width = shape[0].length;
-
-            const rotated = Array.from({
-                length: width
-            }
-
-                , () => "");
-
-            for (let r = 0; r < height; r++) {
-                for (let c = 0; c < width; c++) {
-                    rotated[c] = rotated[c] + shape[height - 1 - r][c];
-                }
-            }
-
-            return rotated;
-        }
-
-        // Generate ship placements and return the board and placement data
-        function generateShipPlacements(shipIndexSet) {
-            const board = createEmptyBoard();
-            const placements = [];
-
-            for (const shipIndex of shipIndexSet) {
-                const ship = SHIPS[shipIndex];
-                let placed = false;
-                let attempts = 0;
-
-                while (!placed && attempts < 50) {
-                    const startRow = Math.floor(Math.random() * BOARD_SIZE);
-                    const startCol = Math.floor(Math.random() * BOARD_SIZE);
-                    const rotate = Math.random() < 0.5;
-
-                    const shape = rotate ? rotateShape(ship.shape) : ship.shape;
-
-                    if (startRow + shape.length > BOARD_SIZE) {
-                        attempts++;
-                        continue;
-                    }
-
-                    if (startCol + shape[0].length > BOARD_SIZE) {
-                        attempts++;
-                        continue;
-                    }
-
-                    let canPlace = true;
-
-                    for (let r = 0; r < shape.length; r++) {
-                        for (let c = 0; c < shape[r].length; c++) {
-                            if (shape[r][c] === 'x') {
-                                if (board[startRow + r][startCol + c].ship) {
-                                    canPlace = false;
-                                    break;
-                                }
-                            }
-                        }
-
-                        if (!canPlace) break;
-                    }
-
-                    if (!canPlace) {
-                        attempts++;
-                        continue;
-                    }
-
-                    // Place ship on board and record placement
-                    const shipCells = [];
-                    for (let r = 0; r < shape.length; r++) {
-                        for (let c = 0; c < shape[r].length; c++) {
-                            if (shape[r][c] === 'x') {
-                                board[startRow + r][startCol + c].ship = true;
-                                shipCells.push({ row: startRow + r, col: startCol + c });
-                            }
-                        }
-                    }
-
-                    placements.push({
-                        shipIndex: shipIndex,
-                        shipName: ship.name,
-                        cells: shipCells,
-                        startRow: startRow,
-                        startCol: startCol,
-                        rotated: rotate
-                    });
-
-                    placed = true;
-                }
-            }
-
-            return { board, placements };
-        }
-
-        function checkIfShipSunk(ships, boardToCheck, sunkSet) {
-            for (const ship of ships) {
-                if (sunkSet.has(ship.index)) continue; // Already sunk
-
-                const allHit = ship.cells.every(cell => boardToCheck[cell.row][cell.col].hit);
-                if (allHit) {
-                    sunkSet.add(ship.index);
-                    return ship;
-                }
-            }
-            return null;
-        }
-
-        function updateShipsLegend() {
-            // Update own ships legend
-            const ownLegend = document.getElementById("ownShipsLegend");
-            ownLegend.innerHTML = "<h4>Your Ships</h4>";
-            ownShips.forEach(ship => {
-                const isSunk = ownSunkShips.has(ship.index);
-                const item = document.createElement("div");
-                item.className = `ship-legend-item ${isSunk ? 'sunk' : ''}`;
-                item.innerHTML = `<div class="ship-legend-status"></div><span>${ship.name}${isSunk ? ' (Sunk)' : ''}</span>`;
-                ownLegend.appendChild(item);
-            });
-
-            // Update opponent ships legend
-            const oppLegend = document.getElementById("oppShipsLegend");
-            oppLegend.innerHTML = "<h4>Opponent Ships</h4>";
-            oppShips.forEach(ship => {
-                const isSunk = oppSunkShips.has(ship.index);
-                const item = document.createElement("div");
-                item.className = `ship-legend-item ${isSunk ? 'sunk' : ''}`;
-                item.innerHTML = `<div class="ship-legend-status"></div><span>${ship.name}${isSunk ? ' (Sunk)' : ''}</span>`;
-                oppLegend.appendChild(item);
-            });
-        }
-
-        document.getElementById("btnPlaceShips").onclick = placeRandomShips;
-
-        document.getElementById("btnReady").onclick = () => {
-            if (!dataChannel || dataChannel.readyState !== "open") return;
-            weAreReady = true;
-
-            sendMessage({
-                type: "ready"
-            });
-            setGameInfo("You are ready. Waiting for opponent...");
-        }
-
-            ;
-
-        function handleMessage(msg) {
-            switch (msg.type) {
-                case "ready":
-                    // Initialize opponent ships based on opponent's selected ships
-                    if (oppShips.length === 0 && msg.selectedShips) {
-                        for (const shipIndex of msg.selectedShips) {
-                            const ship = SHIPS[shipIndex];
-                            oppShips.push({
-                                name: ship.name,
-                                index: shipIndex,
-                                cells: []
+                            sendMessage({
+                                type: "attack", row: r, col: c
                             });
+                        });
+
+                        tr.appendChild(td);
+                    }
+
+                    oppBoardElem.appendChild(tr);
+                }
+            }
+
+            function setGameInfo(msg) {
+                gameInfo.textContent = msg;
+            }
+
+            function placeRandomShips() {
+                ownBoard = createEmptyBoard();
+
+                for (const ship of SHIPS) {
+                    let placed = false;
+
+                    while (!placed) {
+                        const startRow = Math.floor(Math.random() * BOARD_SIZE);
+                        const startCol = Math.floor(Math.random() * BOARD_SIZE);
+                        const rotate = Math.random() < 0.5;
+
+                        const shape = rotate ? rotateShape(ship.shape) : ship.shape;
+
+                        // Check if ship fits
+                        if (startRow + shape.length > BOARD_SIZE) continue;
+                        if (startCol + shape[0].length > BOARD_SIZE) continue;
+
+                        // Check for collisions
+                        let canPlace = true;
+
+                        for (let r = 0; r < shape.length; r++) {
+                            for (let c = 0; c < shape[r].length; c++) {
+                                if (shape[r][c] === 'x') {
+                                    if (ownBoard[startRow + r][startCol + c].ship) {
+                                        canPlace = false;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if (!canPlace) break;
                         }
+
+                        if (!canPlace) continue;
+
+                        // Place ship
+                        for (let r = 0; r < shape.length; r++) {
+                            for (let c = 0; c < shape[r].length; c++) {
+                                if (shape[r][c] === 'x') {
+                                    ownBoard[startRow + r][startCol + c].ship = true;
+                                }
+                            }
+                        }
+
+                        placed = true;
+                    }
+                }
+
+                renderBoards();
+                setGameInfo("Ships placed. Click 'Send Ready'.");
+            }
+
+            function rotateShape(shape) {
+                const height = shape.length;
+                const width = shape[0].length;
+
+                const rotated = Array.from({
+                    length: width
+                }
+
+                    , () => "");
+
+                for (let r = 0; r < height; r++) {
+                    for (let c = 0; c < width; c++) {
+                        rotated[c] = rotated[c] + shape[height - 1 - r][c];
+                    }
+                }
+
+                return rotated;
+            }
+
+            // Generate ship placements and return the board and placement data
+            function generateShipPlacements(shipIndexSet) {
+                const board = createEmptyBoard();
+                const placements = [];
+
+                for (const shipIndex of shipIndexSet) {
+                    const ship = SHIPS[shipIndex];
+                    let placed = false;
+                    let attempts = 0;
+
+                    while (!placed && attempts < 50) {
+                        const startRow = Math.floor(Math.random() * BOARD_SIZE);
+                        const startCol = Math.floor(Math.random() * BOARD_SIZE);
+                        const rotate = Math.random() < 0.5;
+
+                        const shape = rotate ? rotateShape(ship.shape) : ship.shape;
+
+                        if (startRow + shape.length > BOARD_SIZE) {
+                            attempts++;
+                            continue;
+                        }
+
+                        if (startCol + shape[0].length > BOARD_SIZE) {
+                            attempts++;
+                            continue;
+                        }
+
+                        let canPlace = true;
+
+                        for (let r = 0; r < shape.length; r++) {
+                            for (let c = 0; c < shape[r].length; c++) {
+                                if (shape[r][c] === 'x') {
+                                    if (board[startRow + r][startCol + c].ship) {
+                                        canPlace = false;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if (!canPlace) break;
+                        }
+
+                        if (!canPlace) {
+                            attempts++;
+                            continue;
+                        }
+
+                        // Place ship on board and record placement
+                        const shipCells = [];
+                        for (let r = 0; r < shape.length; r++) {
+                            for (let c = 0; c < shape[r].length; c++) {
+                                if (shape[r][c] === 'x') {
+                                    board[startRow + r][startCol + c].ship = true;
+                                    shipCells.push({ row: startRow + r, col: startCol + c });
+                                }
+                            }
+                        }
+
+                        placements.push({
+                            shipIndex: shipIndex,
+                            shipName: ship.name,
+                            cells: shipCells,
+                            startRow: startRow,
+                            startCol: startCol,
+                            rotated: rotate
+                        });
+
+                        placed = true;
+                    }
+                }
+
+                return { board, placements };
+            }
+
+            function checkIfShipSunk(ships, boardToCheck, sunkSet) {
+                for (const ship of ships) {
+                    if (sunkSet.has(ship.index)) continue; // Already sunk
+
+                    const allHit = ship.cells.every(cell => boardToCheck[cell.row][cell.col].hit);
+                    if (allHit) {
+                        sunkSet.add(ship.index);
+                        return ship;
+                    }
+                }
+                return null;
+            }
+
+            function updateShipsLegend() {
+                // Update own ships legend
+                const ownLegend = document.getElementById("ownShipsLegend");
+                ownLegend.innerHTML = "<h4>Your Ships</h4>";
+                ownShips.forEach(ship => {
+                    const isSunk = ownSunkShips.has(ship.index);
+                    const item = document.createElement("div");
+                    item.className = `ship-legend-item ${isSunk ? 'sunk' : ''}`;
+                    item.innerHTML = `<div class="ship-legend-status"></div><span>${ship.name}${isSunk ? ' (Sunk)' : ''}</span>`;
+                    ownLegend.appendChild(item);
+                });
+
+                // Update opponent ships legend
+                const oppLegend = document.getElementById("oppShipsLegend");
+                oppLegend.innerHTML = "<h4>Opponent Ships</h4>";
+                oppShips.forEach(ship => {
+                    const isSunk = oppSunkShips.has(ship.index);
+                    const item = document.createElement("div");
+                    item.className = `ship-legend-item ${isSunk ? 'sunk' : ''}`;
+                    item.innerHTML = `<div class="ship-legend-status"></div><span>${ship.name}${isSunk ? ' (Sunk)' : ''}</span>`;
+                    oppLegend.appendChild(item);
+                });
+            }
+
+            function handleMessage(msg) {
+                switch (msg.type) {
+                    case "ready":
+                        // Initialize opponent ships based on opponent's selected ships
+                        if (oppShips.length === 0 && msg.selectedShips) {
+                            for (const shipIndex of msg.selectedShips) {
+                                const ship = SHIPS[shipIndex];
+                                oppShips.push({
+                                    name: ship.name,
+                                    index: shipIndex,
+                                    cells: []
+                                });
+                            }
+                            updateShipsLegend();
+                        }
+                        opponentReady = true;
+
+                        // If both players are ready, start the game
+                        if (weAreReady && opponentReady) {
+                            // Session creator (offerer) always starts
+                            isMyTurn = isOfferer;
+                            if (isMyTurn) {
+                                setGameInfo("Game started! You attack first.");
+                            } else {
+                                setGameInfo("Game started! Opponent attacks first.");
+                            }
+                        } else {
+                            setGameInfo("Opponent ready. " + (weAreReady ? "Game can start." : "You must click Ready."));
+                        }
+                        break;
+
+                    case "attack":
+                        handleIncomingAttack(msg.row, msg.col);
+                        break;
+
+                    case "attackResult":
+                        handleAttackResult(msg);
+                        break;
+
+                    case "gameOver":
+                        setGameInfo(msg.winner === "you" ? "You lost." : "You won!");
+                        isMyTurn = false;
+                        break;
+                }
+            }
+
+            function handleIncomingAttack(r, c) {
+                const cell = ownBoard[r][c];
+                if (cell.hit || cell.miss) return;
+
+                if (cell.ship) {
+                    cell.hit = true;
+                    ownHitsRemaining--;
+                    renderBoards();
+
+                    // Check if ship is sunk
+                    const sunkShip = checkIfShipSunk(ownShips, ownBoard, ownSunkShips);
+                    const resultMessage = {
+                        type: "attackResult", row: r, col: c, result: "hit"
+                    };
+                    if (sunkShip) {
+                        resultMessage.shipSunk = {
+                            name: sunkShip.name,
+                            index: sunkShip.index
+                        };
                         updateShipsLegend();
                     }
-                    opponentReady = true;
 
-                    // If both players are ready, start the game
-                    if (weAreReady && opponentReady) {
-                        // Session creator (offerer) always starts
-                        isMyTurn = isOfferer;
-                        if (isMyTurn) {
-                            setGameInfo("Game started! You attack first.");
+                    sendMessage(resultMessage);
+                    updateShipsLegend();
+
+                    if (ownHitsRemaining <= 0) {
+                        sendMessage({
+                            type: "gameOver", winner: "me"
+                        });
+                        setGameInfo("All ships sunk. You lost.");
+                        isMyTurn = false;
+                    } else {
+                        // After opponent hits, it's their turn again (they continue)
+                        isMyTurn = false;
+                        if (sunkShip) {
+                            setGameInfo(`Your ${sunkShip.name} was sunk! Opponent's turn continues.`);
                         } else {
-                            setGameInfo("Game started! Opponent attacks first.");
+                            setGameInfo("You were hit! Opponent's turn continues.");
                         }
-                    } else {
-                        setGameInfo("Opponent ready. " + (weAreReady ? "Game can start." : "You must click Ready."));
                     }
-                    break;
+                } else {
+                    cell.miss = true;
+                    renderBoards();
 
-                case "attack":
-                    handleIncomingAttack(msg.row, msg.col);
-                    break;
-
-                case "attackResult":
-                    handleAttackResult(msg);
-                    break;
-
-                case "gameOver":
-                    setGameInfo(msg.winner === "you" ? "You lost." : "You won!");
-                    isMyTurn = false;
-                    break;
-            }
-        }
-
-        function handleIncomingAttack(r, c) {
-            const cell = ownBoard[r][c];
-            if (cell.hit || cell.miss) return;
-
-            if (cell.ship) {
-                cell.hit = true;
-                ownHitsRemaining--;
-                renderBoards();
-
-                // Check if ship is sunk
-                const sunkShip = checkIfShipSunk(ownShips, ownBoard, ownSunkShips);
-                const resultMessage = {
-                    type: "attackResult", row: r, col: c, result: "hit"
-                };
-                if (sunkShip) {
-                    resultMessage.shipSunk = {
-                        name: sunkShip.name,
-                        index: sunkShip.index
-                    };
-                    updateShipsLegend();
-                }
-
-                sendMessage(resultMessage);
-                updateShipsLegend();
-
-                if (ownHitsRemaining <= 0) {
                     sendMessage({
-                        type: "gameOver", winner: "me"
+                        type: "attackResult", row: r, col: c, result: "miss"
                     });
-                    setGameInfo("All ships sunk. You lost.");
-                    isMyTurn = false;
-                } else {
-                    // After opponent hits, it's their turn again (they continue)
-                    isMyTurn = false;
-                    if (sunkShip) {
-                        setGameInfo(`Your ${sunkShip.name} was sunk! Opponent's turn continues.`);
-                    } else {
-                        setGameInfo("You were hit! Opponent's turn continues.");
-                    }
+                    // After opponent misses, it's your turn
+                    isMyTurn = true;
+                    setGameInfo("Opponent missed. It's your turn.");
                 }
-            } else {
-                cell.miss = true;
+            }
+
+            function handleAttackResult(msg) {
+                const cell = oppBoard[msg.row][msg.col];
+
+                if (msg.result === "hit") {
+                    cell.hit = true;
+                    oppHitsRemaining--;
+                    // On a hit, your turn continues
+                    isMyTurn = true;
+                    if (msg.shipSunk) {
+                        oppSunkShips.add(msg.shipSunk.index);
+                        updateShipsLegend();
+                        setGameInfo(`You sank the opponent's ${msg.shipSunk.name}! Your turn continues.`);
+                    } else {
+                        setGameInfo("Hit! Your turn continues.");
+                    }
+                } else {
+                    cell.miss = true;
+                    // On a miss, opponent's turn
+                    isMyTurn = false;
+                    setGameInfo("Miss. Opponent's turn.");
+                }
+
                 renderBoards();
 
-                sendMessage({
-                    type: "attackResult", row: r, col: c, result: "miss"
-                });
-                // After opponent misses, it's your turn
-                isMyTurn = true;
-                setGameInfo("Opponent missed. It's your turn.");
-            }
-        }
-
-        function handleAttackResult(msg) {
-            const cell = oppBoard[msg.row][msg.col];
-
-            if (msg.result === "hit") {
-                cell.hit = true;
-                oppHitsRemaining--;
-                // On a hit, your turn continues
-                isMyTurn = true;
-                if (msg.shipSunk) {
-                    oppSunkShips.add(msg.shipSunk.index);
-                    updateShipsLegend();
-                    setGameInfo(`You sank the opponent's ${msg.shipSunk.name}! Your turn continues.`);
-                } else {
-                    setGameInfo("Hit! Your turn continues.");
+                if (oppHitsRemaining <= 0) {
+                    sendMessage({
+                        type: "gameOver", winner: "you"
+                    });
+                    setGameInfo("You win!");
+                    isMyTurn = false;
                 }
-            } else {
-                cell.miss = true;
-                // On a miss, opponent's turn
-                isMyTurn = false;
-                setGameInfo("Miss. Opponent's turn.");
             }
 
             renderBoards();
 
-            if (oppHitsRemaining <= 0) {
-                sendMessage({
-                    type: "gameOver", winner: "you"
-                });
-                setGameInfo("You win!");
-                isMyTurn = false;
+            /* -----------------------------------------------------------
+               WEBRTC
+            ----------------------------------------------------------- */
+
+            let pc = null;
+            let dataChannel = null;
+            let isOfferer = false;
+            let pollingInterval = null;
+            let lastRetrievedSdp = null;
+
+            // Helper functions for SDP storage service
+            function getSdpServiceBaseUrl() {
+                // Get the hostname/IP from the current page
+                const hostname = window.location.hostname;
+                // Use HTTPS with port 8443 for the SDP shortener service
+                return `https://${hostname}:8443`;
             }
-        }
 
-        renderBoards();
+            async function storeSDP(sdpObject) {
+                try {
+                    const url = `${getSdpServiceBaseUrl()}/store`;
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(sdpObject)
+                    });
 
-        /* -----------------------------------------------------------
-           WEBRTC + BASE64 SDP
-        ----------------------------------------------------------- */
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
 
-        let pc = null;
-        let dataChannel = null;
-        let isOfferer = false;
-        let pollingInterval = null;
-        let lastRetrievedSdp = null;
-
-        // Helper functions for SDP storage service
-        function getSdpServiceBaseUrl() {
-            // Get the hostname/IP from the current page
-            const hostname = window.location.hostname;
-            // Use HTTPS with port 8443 for the SDP shortener service
-            return `https://${hostname}:8443`;
-        }
-
-        async function storeSDP(sdpObject) {
-            try {
-                const url = `${getSdpServiceBaseUrl()}/store`;
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(sdpObject)
-                });
-
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
-                const result = await response.json();
-                return result.key;
-            } catch (error) {
-                console.error('Error storing SDP:', error);
-                showToast('Failed to store SDP. Check console for details.', 'error');
-                return null;
-            }
-        }
-
-        async function retrieveSDP(key) {
-            try {
-                const url = `${getSdpServiceBaseUrl()}/retrieve/${key}`;
-                const response = await fetch(url);
-
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
-                const result = await response.json();
-                if (result.error) {
-                    showToast(`Key not found: ${result.error}`, 'error');
+                    const result = await response.json();
+                    return result.key;
+                } catch (error) {
+                    console.error('Error storing SDP:', error);
+                    showToast('Failed to store SDP. Check console for details.', 'error');
                     return null;
                 }
-
-                return result;
-            } catch (error) {
-                console.error('Error retrieving SDP:', error);
-                showToast('Failed to retrieve SDP. Check console for details.', 'error');
-                return null;
             }
-        }
 
-        const statusElem = document.getElementById("status");
-        const webrtcModal = document.getElementById("webrtcModal");
-        const offerSection = document.getElementById("offerSection");
-        const answerInputSection = document.getElementById("answerInputSection");
+            async function retrieveSDP(key) {
+                try {
+                    const url = `${getSdpServiceBaseUrl()}/retrieve/${key}`;
+                    const response = await fetch(url);
 
-        function logStatus(msg) {
-            statusElem.textContent = "Status: " + msg;
-        }
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
 
-        function showToast(message, type = "success") {
-            const toast = document.createElement("div");
+                    const result = await response.json();
+                    if (result.error) {
+                        showToast(`Key not found: ${result.error}`, 'error');
+                        return null;
+                    }
 
-            toast.className = `toast $ {
+                    return result;
+                } catch (error) {
+                    console.error('Error retrieving SDP:', error);
+                    showToast('Failed to retrieve SDP. Check console for details.', 'error');
+                    return null;
+                }
+            }
+
+            const statusElem = document.getElementById("status");
+            const webrtcModal = document.getElementById("webrtcModal");
+            const offerSection = document.getElementById("offerSection");
+            const answerInputSection = document.getElementById("answerInputSection");
+
+            function logStatus(msg) {
+                statusElem.textContent = "Status: " + msg;
+            }
+
+            function showToast(message, type = "success") {
+                const toast = document.createElement("div");
+
+                toast.className = `toast $ {
                 type
             }
 
             `;
-            toast.textContent = message;
-            document.body.appendChild(toast);
+                toast.textContent = message;
+                document.body.appendChild(toast);
 
-            setTimeout(() => {
-                toast.remove();
-            }
-
-                , 3000);
-        }
-
-        function copyToClipboard(text) {
-            navigator.clipboard.writeText(text).then(() => {
-                showToast("Copied to clipboard!", "success");
-
-            }).catch(() => {
-                showToast("Failed to copy to clipboard", "error");
-            });
-        }
-
-        async function copyToClipboardWithRetry(text, maxRetries = 3) {
-            for (let attempt = 1; attempt <= maxRetries; attempt++) {
-                try {
-                    await navigator.clipboard.writeText(text);
-                    return true;
-                } catch (error) {
-                    if (attempt < maxRetries) {
-                        // Wait before retrying on mobile (clipboard permission issues)
-                        await new Promise(resolve => setTimeout(resolve, 100));
-                    }
+                setTimeout(() => {
+                    toast.remove();
                 }
+
+                    , 3000);
             }
-            // If auto-copy fails, at least the key is visible for manual copy
-            return false;
-        }
 
-        function hideWebRTCModal() {
-            webrtcModal.classList.remove("show");
-            offerSection.classList.remove("show");
-            answerInputSection.classList.remove("show");
-        }
+            function copyToClipboard(text) {
+                navigator.clipboard.writeText(text).then(() => {
+                    showToast("Copied to clipboard!", "success");
 
-        function showOfferSection() {
-            webrtcModal.classList.add("show");
-            offerSection.classList.add("show");
-            answerInputSection.classList.remove("show");
-        }
-
-        function showAnswerInputSection() {
-            webrtcModal.classList.add("show");
-            answerInputSection.classList.add("show");
-            offerSection.classList.remove("show");
-        }
-
-        function showShipSelectionModal() {
-            const shipSelectionModal = document.getElementById("shipSelectionModal");
-            shipSelectionModal.classList.add("show");
-            initializeShipSelection();
-        }
-
-        function hideShipSelectionModal() {
-            const shipSelectionModal = document.getElementById("shipSelectionModal");
-            shipSelectionModal.classList.remove("show");
-        }
-
-        function initializeShipSelection() {
-            selectedShips = new Set();
-            const shipList = document.getElementById("shipList");
-            shipList.innerHTML = "";
-
-            SHIPS.forEach((ship, index) => {
-                const shipItem = document.createElement("div");
-                shipItem.className = "ship-item";
-                shipItem.innerHTML = `<input type="checkbox" id="ship-${index}" value="${index}"><label for="ship-${index}">${ship.name}</label>`;
-                shipList.appendChild(shipItem);
-
-                const checkbox = shipItem.querySelector("input");
-                checkbox.addEventListener("change", (e) => {
-                    if (e.target.checked) {
-                        selectedShips.add(index);
-                    } else {
-                        selectedShips.delete(index);
-                    }
-                    updateShipPreview();
+                }).catch(() => {
+                    showToast("Failed to copy to clipboard", "error");
                 });
-            });
-
-            updateShipPreview();
-        }
-
-        function updateShipPreview() {
-            const previewGrid = document.getElementById("shipPreviewGrid");
-            previewGrid.innerHTML = "";
-
-            // Generate new placements
-            const result = generateShipPlacements(selectedShips);
-            currentShipPlacements = result.placements;
-            const previewBoard = result.board;
-
-            // Render preview
-            for (let r = 0; r < BOARD_SIZE; r++) {
-                const row = document.createElement("div");
-                row.className = "ship-preview-row";
-
-                for (let c = 0; c < BOARD_SIZE; c++) {
-                    const cell = document.createElement("div");
-                    cell.className = "ship-preview-cell";
-
-                    if (previewBoard[r][c].ship) {
-                        cell.classList.add("ship");
-                    }
-
-                    row.appendChild(cell);
-                }
-
-                previewGrid.appendChild(row);
-            }
-        }
-
-        function placeSelectedShips() {
-            ownBoard = createEmptyBoard();
-            ownShips = [];
-            ownSunkShips = new Set();
-
-            // Use the stored placements from preview to ensure consistency
-            if (currentShipPlacements) {
-                for (const placement of currentShipPlacements) {
-                    // Place ships on board
-                    for (const cell of placement.cells) {
-                        ownBoard[cell.row][cell.col].ship = true;
-                    }
-
-                    // Add to ownShips for tracking
-                    ownShips.push({
-                        name: placement.shipName,
-                        index: placement.shipIndex,
-                        cells: placement.cells
-                    });
-                }
             }
 
-            // Recalculate hits remaining based on selected ships
-            ownHitsRemaining = Array.from(selectedShips).reduce((sum, idx) => {
-                const ship = SHIPS[idx];
-                return sum + ship.shape.reduce((s, row) => s + row.split('x').length - 1, 0);
-            }, 0);
-
-            renderBoards();
-            updateShipsLegend();
-            shipsPlaced = true;
-        }
-
-        function initPeer() {
-            // Determine if we're behind a proxy or direct connection
-            const isHttps = window.location.protocol === 'https:';
-            const hostname = window.location.hostname;
-            const port = window.location.port || (isHttps ? 443 : 80);
-
-            // Local TURN server configuration (with fallback to public STUN servers)
-            // The TURN server provides crucial NAT traversal for mobile devices
-            const iceServers = [
-                // Primary TURN server (handles NAT/firewall traversal)
-                {
-                    urls: [
-                        `turn:${hostname}:3478?transport=udp`
-                        //,`turns:${hostname}:5349?transport=udp`
-                    ],
-                    username: "webrtc",
-                    credential: "webrtcPassword123"
-                },
-                // Fallback STUN servers for direct connectivity
-                { urls: "stun:stun.l.google.com:19302" },
-                { urls: "stun:stun1.l.google.com:19302" },
-                { urls: "stun:stun2.l.google.com:19302" },
-                { urls: "stun:stun3.l.google.com:19302" },
-                { urls: "stun:stun4.l.google.com:19302" }
-            ];
-
-            pc = new RTCPeerConnection({
-                iceServers: iceServers,
-                // These settings help with same-network P2P on mobile
-                iceCandidatePoolSize: 10,
-                bundlePolicy: "max-bundle",
-                rtcpMuxPolicy: "require",
-                // Enhanced ICE settings for mobile reliability
-                iceGatheringTimeout: 300000,
-                iceTransportPolicy: "all" // Try all candidates, not just relay
-            });
-
-            let candidateCount = 0;
-
-            pc.onicegatheringstatechange = async () => {
-                console.log('ICE gathering state:', pc.iceGatheringState, 'candidates gathered:', candidateCount);
-                if (pc.iceGatheringState === "complete") {
-                    const sdpObject = pc.localDescription;
-
-                    if (isOfferer) {
-                        // Store offer and show key
-                        const key = await storeSDP(sdpObject);
-                        if (key) {
-                            const keyElem = document.getElementById("localKey");
-                            keyElem.textContent = key;
-                            keyElem.classList.remove("key-loading");
-                            keyElem.classList.add("key-ready");
-
-                            // Auto-copy with retry mechanism for mobile
-                            await copyToClipboardWithRetry(key);
-                            showToast("✓ Offer key copied to clipboard!", "success");
-                            logStatus(`Offer stored (${candidateCount} ICE candidates). Share the key with peer.`);
+            async function copyToClipboardWithRetry(text, maxRetries = 3) {
+                for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                    try {
+                        await navigator.clipboard.writeText(text);
+                        return true;
+                    } catch (error) {
+                        if (attempt < maxRetries) {
+                            // Wait before retrying on mobile (clipboard permission issues)
+                            await new Promise(resolve => setTimeout(resolve, 100));
                         }
                     }
-                    // Note: For answerers, the answer is auto-stored via /store/{key} endpoint
-                    // No separate key display needed since the offer key is reused
                 }
-            };
+                // If auto-copy fails, at least the key is visible for manual copy
+                return false;
+            }
 
-            pc.onicecandidate = (event) => {
-                if (event.candidate) {
-                    candidateCount++;
-                    console.log(`ICE candidate ${candidateCount}:`, {
-                        candidate: event.candidate.candidate,
-                        foundation: event.candidate.foundation,
-                        protocol: event.candidate.protocol,
-                        priority: event.candidate.priority,
-                        address: event.candidate.address,
-                        port: event.candidate.port,
-                        type: event.candidate.type
+            function hideWebRTCModal() {
+                webrtcModal.classList.remove("show");
+                offerSection.classList.remove("show");
+                answerInputSection.classList.remove("show");
+            }
+
+            function showOfferSection() {
+                webrtcModal.classList.add("show");
+                offerSection.classList.add("show");
+                answerInputSection.classList.remove("show");
+            }
+
+            function showAnswerInputSection() {
+                webrtcModal.classList.add("show");
+                answerInputSection.classList.add("show");
+                offerSection.classList.remove("show");
+            }
+
+            function showShipSelectionModal() {
+                const shipSelectionModal = document.getElementById("shipSelectionModal");
+                shipSelectionModal.classList.add("show");
+                initializeShipSelection();
+            }
+
+            function hideShipSelectionModal() {
+                const shipSelectionModal = document.getElementById("shipSelectionModal");
+                shipSelectionModal.classList.remove("show");
+            }
+
+            function initializeShipSelection() {
+                selectedShips = new Set();
+                const shipList = document.getElementById("shipList");
+                shipList.innerHTML = "";
+
+                SHIPS.forEach((ship, index) => {
+                    const shipItem = document.createElement("div");
+                    shipItem.className = "ship-item";
+                    shipItem.innerHTML = `<input type="checkbox" id="ship-${index}" value="${index}"><label for="ship-${index}">${ship.name}</label>`;
+                    shipList.appendChild(shipItem);
+
+                    const checkbox = shipItem.querySelector("input");
+                    checkbox.addEventListener("change", (e) => {
+                        if (e.target.checked) {
+                            selectedShips.add(index);
+                        } else {
+                            selectedShips.delete(index);
+                        }
+                        updateShipPreview();
                     });
-                } else {
-                    console.log('ICE candidate gathering complete - null candidate');
-                    showToast('ICE candidate gathering complete - null candidate');
-                }
-            };
+                });
 
-            pc.oniceconnectionstatechange = () => {
-                console.log('ICE connection state:', pc.iceConnectionState, 'Connection state:', pc.connectionState);
-                showToast(`ICE: ${pc.iceConnectionState} | Conn: ${pc.connectionState}`);
-                logStatus(`ICE: ${pc.iceConnectionState}, Connection: ${pc.connectionState}, Data: ${dataChannel ? dataChannel.readyState : 'null'}`);
+                updateShipPreview();
+            }
 
-                // Handle ICE connection failures for mobile
-                if (pc.iceConnectionState === 'failed') {
-                    console.error('ICE connection failed! Attempting restart...');
-                    showToast('⚠ ICE connection failed - checking TURN server...', 'error');
-                    // Restart ICE to force re-gathering with TURN server
-                    pc.restartIce();
-                }
+            function updateShipPreview() {
+                const previewGrid = document.getElementById("shipPreviewGrid");
+                previewGrid.innerHTML = "";
 
-                // Log when entering disconnected state
-                if (pc.iceConnectionState === 'disconnected') {
-                    console.warn('ICE connection disconnected - may reconnect automatically');
-                    showToast('⚠ Connection temporarily disconnected', 'error');
-                }
-            };
+                // Generate new placements
+                const result = generateShipPlacements(selectedShips);
+                currentShipPlacements = result.placements;
+                const previewBoard = result.board;
 
-            pc.onconnectionstatechange = () => {
-                console.log('Connection state:', pc.connectionState, 'Data channel:', dataChannel ? dataChannel.readyState : 'null');
-                logStatus(`Connection: ${pc.connectionState}, Data: ${dataChannel ? dataChannel.readyState : 'null'}`);
+                // Render preview
+                for (let r = 0; r < BOARD_SIZE; r++) {
+                    const row = document.createElement("div");
+                    row.className = "ship-preview-row";
 
-                // Handle connection state changes
-                if (pc.connectionState === 'failed') {
-                    console.error('Peer connection failed!');
-                    showToast('⚠ Peer connection failed - trying to reconnect...', 'error');
-                    // Attempt to restart ICE
-                    try {
-                        pc.restartIce();
-                    } catch (e) {
-                        console.error('Could not restart ICE:', e);
+                    for (let c = 0; c < BOARD_SIZE; c++) {
+                        const cell = document.createElement("div");
+                        cell.className = "ship-preview-cell";
+
+                        if (previewBoard[r][c].ship) {
+                            cell.classList.add("ship");
+                        }
+
+                        row.appendChild(cell);
                     }
-                } else if (pc.connectionState === 'closed') {
-                    console.warn('Peer connection closed');
-                    showToast('Connection closed', 'error');
+
+                    previewGrid.appendChild(row);
                 }
-            };
+            }
 
-            pc.onicecandidateerror = (event) => {
-                console.error('ICE candidate error:', event.errorCode, event.errorText);
-                // Log error but don't treat as fatal - candidates can fail individually
-            };
+            function placeSelectedShips() {
+                ownBoard = createEmptyBoard();
+                ownShips = [];
+                ownSunkShips = new Set();
 
-            pc.ondatachannel = (e) => {
-                dataChannel = e.channel;
-                console.log('Remote data channel received:', e.channel.label, 'readyState:', e.channel.readyState);
-                setupDataChannel();
-            };
-        }
+                // Use the stored placements from preview to ensure consistency
+                if (currentShipPlacements) {
+                    for (const placement of currentShipPlacements) {
+                        // Place ships on board
+                        for (const cell of placement.cells) {
+                            ownBoard[cell.row][cell.col].ship = true;
+                        }
 
-        function setupDataChannel() {
-            dataChannel.onopen = () => {
-                console.log('Data channel opened!');
-                logStatus("Connected");
-                // Stop polling if active when connection established
-                if (pollingInterval) {
-                    clearInterval(pollingInterval);
-                    pollingInterval = null;
-                    showToast("Connected! Polling stopped.", "success");
+                        // Add to ownShips for tracking
+                        ownShips.push({
+                            name: placement.shipName,
+                            index: placement.shipIndex,
+                            cells: placement.cells
+                        });
+                    }
                 }
-                hideWebRTCModal();
-                showShipSelectionModal();
-            };
 
-            dataChannel.onerror = (error) => {
-                console.error('Data channel error:', error);
-                showToast("Data channel error: " + error.message, "error");
-            };
+                // Recalculate hits remaining based on selected ships
+                ownHitsRemaining = Array.from(selectedShips).reduce((sum, idx) => {
+                    const ship = SHIPS[idx];
+                    return sum + ship.shape.reduce((s, row) => s + row.split('x').length - 1, 0);
+                }, 0);
 
-            dataChannel.onclose = () => {
-                console.log('Data channel closed');
-                logStatus("Data channel closed");
-            };
+                renderBoards();
+                updateShipsLegend();
+                shipsPlaced = true;
+            }
 
-            dataChannel.onmessage = (e) => {
-                const msg = JSON.parse(e.data);
-                handleMessage(msg);
-            };
-        }
+            function initPeer() {
+                // Determine if we're behind a proxy or direct connection
+                const isHttps = window.location.protocol === 'https:';
+                const hostname = window.location.hostname;
+                const port = window.location.port || (isHttps ? 443 : 80);
 
-        async function startPollingForAnswer(offerKey) {
-            // Start polling for answer SDP changes every second
-            showToast("Polling for answer SDP (checks every second)...", "success");
-            logStatus("Polling for answer SDP...");
+                // Local TURN server configuration (with fallback to public STUN servers)
+                // The TURN server provides crucial NAT traversal for mobile devices
+                const iceServers = [
+                    // Primary TURN server (handles NAT/firewall traversal)
+                    {
+                        urls: [
+                            `turn:${hostname}:3478?transport=udp`
+                            //,`turns:${hostname}:5349?transport=udp`
+                        ],
+                        username: "webrtc",
+                        credential: "webrtcPassword123"
+                    },
+                    // Fallback STUN servers for direct connectivity
+                    { urls: "stun:stun.l.google.com:19302" },
+                    { urls: "stun:stun1.l.google.com:19302" },
+                    { urls: "stun:stun2.l.google.com:19302" },
+                    { urls: "stun:stun3.l.google.com:19302" },
+                    { urls: "stun:stun4.l.google.com:19302" }
+                ];
 
-            pollingInterval = setInterval(async () => {
-                try {
-                    const sdpObject = await retrieveSDP(offerKey);
+                pc = new RTCPeerConnection({
+                    iceServers: iceServers,
+                    // These settings help with same-network P2P on mobile
+                    iceCandidatePoolSize: 10,
+                    bundlePolicy: "max-bundle",
+                    rtcpMuxPolicy: "require",
+                    // Enhanced ICE settings for mobile reliability
+                    iceGatheringTimeout: 300000,
+                    iceTransportPolicy: "all" // Try all candidates, not just relay
+                });
 
-                    console.log('Offerer polled SDP:', sdpObject ? `Type: ${sdpObject.type}, has SDP: ${!!sdpObject.sdp}` : 'null', sdpObject);
-                    if (sdpObject && sdpObject.type && sdpObject.sdp) {
-                        // Check if we got an answer (answerer has overwritten the offer)
-                        if (sdpObject.type === "answer") {
-                            console.log('Offerer detected ANSWER SDP! Setting as remote description.');
+                let candidateCount = 0;
 
-                            // Answer SDP detected!
-                            clearInterval(pollingInterval);
-                            pollingInterval = null;
+                pc.onicegatheringstatechange = async () => {
+                    console.log('ICE gathering state:', pc.iceGatheringState, 'candidates gathered:', candidateCount);
+                    if (pc.iceGatheringState === "complete") {
+                        const sdpObject = pc.localDescription;
 
-                            try {
-                                console.log('Offerer setting remote description (answer) from poll');
-                                await pc.setRemoteDescription(new RTCSessionDescription(sdpObject));
-                                console.log('Offerer remote description set successfully. Connection state:', pc.connectionState, 'ICE state:', pc.iceConnectionState);
-                                showToast("✓ Answer SDP detected! Establishing connection...", "success");
-                                logStatus("Answer applied. Waiting for data channel to open...");
+                        if (isOfferer) {
+                            // Store offer and show key
+                            const key = await storeSDP(sdpObject);
+                            if (key) {
+                                const keyElem = document.getElementById("localKey");
+                                keyElem.textContent = key;
+                                keyElem.classList.remove("key-loading");
+                                keyElem.classList.add("key-ready");
 
-                                // Wait for data channel to open (more reliable than connection state)
-                                // Use a two-phase approach: wait for open, but also proceed if both descriptions are set
-                                const dataChannelPromise = new Promise((resolve, reject) => {
-                                    let resolved = false;
-
-                                    let timeElapsed = 0;
-                                    const progressInterval = setInterval(() => {
-                                        timeElapsed += 5;
-                                        console.log(`Connection wait: ${timeElapsed}s - Connection: ${pc.connectionState}, ICE: ${pc.iceConnectionState}, Data: ${dataChannel ? dataChannel.readyState : 'null'}`);
-                                        if (timeElapsed >= 300) {
-                                            clearInterval(progressInterval);
-                                        }
-                                    }, 5000);
-
-                                    // More aggressive timeout for mobile: 30 seconds instead of 5 minutes
-                                    // This helps detect hanging issues faster and allows retry
-                                    const timeout = setTimeout(() => {
-                                        if (!resolved) {
-                                            clearInterval(progressInterval);
-                                            console.warn('Data channel timeout (30 seconds) - connection may need restart');
-                                            console.log('Final states - Connection:', pc.connectionState, 'ICE:', pc.iceConnectionState, 'Data channel:', dataChannel ? dataChannel.readyState : 'null');
-
-                                            // Check if we're stuck in "connecting" state (common on mobile after SDP exchange)
-                                            if (pc.connectionState === 'connecting' || pc.iceConnectionState === 'checking' || pc.iceConnectionState === 'new') {
-                                                console.warn('Connection appears stuck in connecting state - attempting ICE restart');
-                                                showToast('⚠ Connection timeout - attempting to restart...', 'error');
-                                                try {
-                                                    pc.restartIce();
-                                                    // Give it another 10 seconds after restart
-                                                    const retryTimeout = setTimeout(() => {
-                                                        if (!resolved) {
-                                                            resolved = true;
-                                                            reject(new Error("Connection still unresponsive after ICE restart. Please reload and try again."));
-                                                        }
-                                                    }, 10000);
-                                                } catch (e) {
-                                                    console.error('Error restarting ICE:', e);
-                                                    reject(new Error("Timeout: Data channel didn't open after 30 seconds"));
-                                                }
-                                            } else if (pc.localDescription && pc.remoteDescription) {
-                                                resolved = true;
-                                                resolve(); // Proceed anyway if both descriptions are set
-                                            } else {
-                                                reject(new Error("Timeout: Data channel didn't open after 30 seconds and descriptions incomplete"));
-                                            }
-                                        }
-                                    }, 300000); //  5 minutes
-
-                                    // Check if data channel already exists and is open
-                                    if (dataChannel && dataChannel.readyState === "open") {
-                                        resolved = true;
-                                        clearTimeout(timeout);
-                                        console.log('Data channel already open');
-                                        resolve();
-                                        return;
-                                    }
-
-                                    // Setup listeners
-                                    const checkDataChannel = () => {
-                                        console.log('Data channel state changed:', dataChannel ? dataChannel.readyState : 'null');
-                                        if (dataChannel && dataChannel.readyState === "open") {
-                                            if (!resolved) {
-                                                resolved = true;
-                                                clearTimeout(timeout);
-                                                if (dataChannel) {
-                                                    dataChannel.removeEventListener("open", checkDataChannel);
-                                                }
-                                                resolve();
-                                            }
-                                        }
-                                    };
-
-                                    if (dataChannel) {
-                                        dataChannel.addEventListener("open", checkDataChannel);
-                                        console.log('Added open listener to existing data channel');
-                                    }
-
-                                    // Also monitor connection state changes which might trigger data channel setup
-                                    const onConnectionChange = () => {
-                                        console.log('Connection state changed during DC wait:', pc.connectionState);
-                                        if (dataChannel && dataChannel.readyState === "open") {
-                                            if (!resolved) {
-                                                resolved = true;
-                                                clearTimeout(timeout);
-                                                if (dataChannel) {
-                                                    dataChannel.removeEventListener("open", checkDataChannel);
-                                                }
-                                                pc.removeEventListener("connectionstatechange", onConnectionChange);
-                                                resolve();
-                                            }
-                                        }
-                                    };
-                                    pc.addEventListener("connectionstatechange", onConnectionChange);
-                                });
-
-                                try {
-                                    await dataChannelPromise;
-                                    showToast("✓ Session established! Loading game...", "success");
-                                    logStatus("Connected");
-
-                                    // Ensure we proceed to game even if data channel didn't open properly
-                                    // If data channel is already open, setupDataChannel will have been called
-                                    // If not, we need to hide modal and show ship selection anyway
-                                    if (!dataChannel || dataChannel.readyState !== "open") {
-                                        console.log('Data channel not open but proceeding - forcing modal hide and game load');
-                                        hideWebRTCModal();
-                                        showShipSelectionModal();
-                                    }
-                                } catch (error) {
-                                    console.error('Connection error:', error);
-                                    showToast(`Connection error: ${error.message}`, "error");
-                                    logStatus("Connection failed");
-                                }
-                            } catch (e) {
-                                showToast("Failed to set answer SDP", "error");
-                                console.error(e);
+                                // Auto-copy with retry mechanism for mobile
+                                await copyToClipboardWithRetry(key);
+                                showToast("✓ Offer key copied to clipboard!", "success");
+                                logStatus(`Offer stored (${candidateCount} ICE candidates). Share the key with peer.`);
                             }
                         }
+                        // Note: For answerers, the answer is auto-stored via /store/{key} endpoint
+                        // No separate key display needed since the offer key is reused
                     }
-                } catch (error) {
-                    console.error('Polling error:', error);
-                }
-            }, 1000);
-        }
+                };
 
-        function sendMessage(obj) {
-            dataChannel.send(JSON.stringify(obj));
-        }
+                pc.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        candidateCount++;
+                        console.log(`ICE candidate ${candidateCount}:`, {
+                            candidate: event.candidate.candidate,
+                            foundation: event.candidate.foundation,
+                            protocol: event.candidate.protocol,
+                            priority: event.candidate.priority,
+                            address: event.candidate.address,
+                            port: event.candidate.port,
+                            type: event.candidate.type
+                        });
+                    } else {
+                        console.log('ICE candidate gathering complete - null candidate');
+                        showToast('ICE candidate gathering complete - null candidate');
+                    }
+                };
 
-        document.getElementById("btnCreateSession").onclick = async () => {
-            isOfferer = true;
-            initPeer();
-            dataChannel = pc.createDataChannel("battleship");
-            setupDataChannel();
+                pc.oniceconnectionstatechange = () => {
+                    console.log('ICE connection state:', pc.iceConnectionState, 'Connection state:', pc.connectionState);
+                    showToast(`ICE: ${pc.iceConnectionState} | Conn: ${pc.connectionState}`);
+                    logStatus(`ICE: ${pc.iceConnectionState}, Connection: ${pc.connectionState}, Data: ${dataChannel ? dataChannel.readyState : 'null'}`);
 
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            logStatus("Creating offer...");
+                    // Handle ICE connection failures for mobile
+                    if (pc.iceConnectionState === 'failed') {
+                        console.error('ICE connection failed! Attempting restart...');
+                        showToast('⚠ ICE connection failed - checking TURN server...', 'error');
+                        // Restart ICE to force re-gathering with TURN server
+                        pc.restartIce();
+                    }
 
-            document.getElementById("sessionDialog").style.display = "none";
-            showOfferSection();
+                    // Log when entering disconnected state
+                    if (pc.iceConnectionState === 'disconnected') {
+                        console.warn('ICE connection disconnected - may reconnect automatically');
+                        showToast('⚠ Connection temporarily disconnected', 'error');
+                    }
+                };
 
-            // Store offer and get key for polling
-            setTimeout(async () => {
-                const offerKey = document.getElementById("localKey").textContent;
-                if (offerKey && offerKey !== "Generating key...") {
-                    // Start polling for answer immediately
-                    await startPollingForAnswer(offerKey);
-                }
-            }, 2000); // Wait for the offer to be stored
-        }
+                pc.onconnectionstatechange = () => {
+                    console.log('Connection state:', pc.connectionState, 'Data channel:', dataChannel ? dataChannel.readyState : 'null');
+                    logStatus(`Connection: ${pc.connectionState}, Data: ${dataChannel ? dataChannel.readyState : 'null'}`);
 
-            ;
+                    // Handle connection state changes
+                    if (pc.connectionState === 'failed') {
+                        console.error('Peer connection failed!');
+                        showToast('⚠ Peer connection failed - trying to reconnect...', 'error');
+                        // Attempt to restart ICE
+                        try {
+                            pc.restartIce();
+                        } catch (e) {
+                            console.error('Could not restart ICE:', e);
+                        }
+                    } else if (pc.connectionState === 'closed') {
+                        console.warn('Peer connection closed');
+                        showToast('Connection closed', 'error');
+                    }
+                };
 
-        document.getElementById("btnJoinSession").onclick = () => {
-            isOfferer = false;
-            initPeer();
-            logStatus("Awaiting SDP input...");
+                pc.onicecandidateerror = (event) => {
+                    console.error('ICE candidate error:', event.errorCode, event.errorText);
+                    // Log error but don't treat as fatal - candidates can fail individually
+                };
 
-            document.getElementById("sessionDialog").style.display = "none";
-            showAnswerInputSection();
-        }
-
-            ;
-
-        document.getElementById("btnCopyOfferKey").onclick = () => {
-            const key = document.getElementById("localKey").textContent;
-
-            if (key) {
-                copyToClipboard(key);
-                showToast("Offer key copied to clipboard!", "success");
+                pc.ondatachannel = (e) => {
+                    dataChannel = e.channel;
+                    console.log('Remote data channel received:', e.channel.label, 'readyState:', e.channel.readyState);
+                    setupDataChannel();
+                };
             }
-        };
 
-        document.getElementById("refreshAnswer").addEventListener(
-            "click",
-            async () => {
+            function setupDataChannel() {
+                dataChannel.onopen = () => {
+                    console.log('Data channel opened!');
+                    logStatus("Connected");
+                    // Stop polling if active when connection established
+                    if (pollingInterval) {
+                        clearInterval(pollingInterval);
+                        pollingInterval = null;
+                        showToast("Connected! Polling stopped.", "success");
+                    }
+                    hideWebRTCModal();
+                    showShipSelectionModal();
+                };
+
+                dataChannel.onerror = (error) => {
+                    console.error('Data channel error:', error);
+                    showToast("Data channel error: " + error.message, "error");
+                };
+
+                dataChannel.onclose = () => {
+                    console.log('Data channel closed');
+                    logStatus("Data channel closed");
+                };
+
+                dataChannel.onmessage = (e) => {
+                    const msg = JSON.parse(e.data);
+                    handleMessage(msg);
+                };
+            }
+
+            async function startPollingForAnswer(offerKey) {
+                // Start polling for answer SDP changes every second
+                showToast("Polling for answer SDP (checks every second)...", "success");
+                logStatus("Polling for answer SDP...");
+
+                pollingInterval = setInterval(async () => {
+                    try {
+                        const sdpObject = await retrieveSDP(offerKey);
+
+                        console.log('Offerer polled SDP:', sdpObject ? `Type: ${sdpObject.type}, has SDP: ${!!sdpObject.sdp}` : 'null', sdpObject);
+                        if (sdpObject && sdpObject.type && sdpObject.sdp) {
+                            // Check if we got an answer (answerer has overwritten the offer)
+                            if (sdpObject.type === "answer") {
+                                console.log('Offerer detected ANSWER SDP! Setting as remote description.');
+
+                                // Answer SDP detected!
+                                clearInterval(pollingInterval);
+                                pollingInterval = null;
+
+                                try {
+                                    console.log('Offerer setting remote description (answer) from poll');
+                                    await pc.setRemoteDescription(new RTCSessionDescription(sdpObject));
+                                    console.log('Offerer remote description set successfully. Connection state:', pc.connectionState, 'ICE state:', pc.iceConnectionState);
+                                    showToast("✓ Answer SDP detected! Establishing connection...", "success");
+                                    logStatus("Answer applied. Waiting for data channel to open...");
+
+                                    // Wait for data channel to open (more reliable than connection state)
+                                    // Use a two-phase approach: wait for open, but also proceed if both descriptions are set
+                                    const dataChannelPromise = new Promise((resolve, reject) => {
+                                        let resolved = false;
+
+                                        let timeElapsed = 0;
+                                        const progressInterval = setInterval(() => {
+                                            timeElapsed += 5;
+                                            console.log(`Connection wait: ${timeElapsed}s - Connection: ${pc.connectionState}, ICE: ${pc.iceConnectionState}, Data: ${dataChannel ? dataChannel.readyState : 'null'}`);
+                                            if (timeElapsed >= 300) {
+                                                clearInterval(progressInterval);
+                                            }
+                                        }, 5000);
+
+                                        // More aggressive timeout for mobile: 30 seconds instead of 5 minutes
+                                        // This helps detect hanging issues faster and allows retry
+                                        const timeout = setTimeout(() => {
+                                            if (!resolved) {
+                                                clearInterval(progressInterval);
+                                                console.warn('Data channel timeout (30 seconds) - connection may need restart');
+                                                console.log('Final states - Connection:', pc.connectionState, 'ICE:', pc.iceConnectionState, 'Data channel:', dataChannel ? dataChannel.readyState : 'null');
+
+                                                // Check if we're stuck in "connecting" state (common on mobile after SDP exchange)
+                                                if (pc.connectionState === 'connecting' || pc.iceConnectionState === 'checking' || pc.iceConnectionState === 'new') {
+                                                    console.warn('Connection appears stuck in connecting state - attempting ICE restart');
+                                                    showToast('⚠ Connection timeout - attempting to restart...', 'error');
+                                                    try {
+                                                        pc.restartIce();
+                                                        // Give it another 10 seconds after restart
+                                                        const retryTimeout = setTimeout(() => {
+                                                            if (!resolved) {
+                                                                resolved = true;
+                                                                reject(new Error("Connection still unresponsive after ICE restart. Please reload and try again."));
+                                                            }
+                                                        }, 10000);
+                                                    } catch (e) {
+                                                        console.error('Error restarting ICE:', e);
+                                                        reject(new Error("Timeout: Data channel didn't open after 30 seconds"));
+                                                    }
+                                                } else if (pc.localDescription && pc.remoteDescription) {
+                                                    resolved = true;
+                                                    resolve(); // Proceed anyway if both descriptions are set
+                                                } else {
+                                                    reject(new Error("Timeout: Data channel didn't open after 30 seconds and descriptions incomplete"));
+                                                }
+                                            }
+                                        }, 300000); //  5 minutes
+
+                                        // Check if data channel already exists and is open
+                                        if (dataChannel && dataChannel.readyState === "open") {
+                                            resolved = true;
+                                            clearTimeout(timeout);
+                                            console.log('Data channel already open');
+                                            resolve();
+                                            return;
+                                        }
+
+                                        // Setup listeners
+                                        const checkDataChannel = () => {
+                                            console.log('Data channel state changed:', dataChannel ? dataChannel.readyState : 'null');
+                                            if (dataChannel && dataChannel.readyState === "open") {
+                                                if (!resolved) {
+                                                    resolved = true;
+                                                    clearTimeout(timeout);
+                                                    if (dataChannel) {
+                                                        dataChannel.removeEventListener("open", checkDataChannel);
+                                                    }
+                                                    resolve();
+                                                }
+                                            }
+                                        };
+
+                                        if (dataChannel) {
+                                            dataChannel.addEventListener("open", checkDataChannel);
+                                            console.log('Added open listener to existing data channel');
+                                        }
+
+                                        // Also monitor connection state changes which might trigger data channel setup
+                                        const onConnectionChange = () => {
+                                            console.log('Connection state changed during DC wait:', pc.connectionState);
+                                            if (dataChannel && dataChannel.readyState === "open") {
+                                                if (!resolved) {
+                                                    resolved = true;
+                                                    clearTimeout(timeout);
+                                                    if (dataChannel) {
+                                                        dataChannel.removeEventListener("open", checkDataChannel);
+                                                    }
+                                                    pc.removeEventListener("connectionstatechange", onConnectionChange);
+                                                    resolve();
+                                                }
+                                            }
+                                        };
+                                        pc.addEventListener("connectionstatechange", onConnectionChange);
+                                    });
+
+                                    try {
+                                        await dataChannelPromise;
+                                        showToast("✓ Session established! Loading game...", "success");
+                                        logStatus("Connected");
+
+                                        // Ensure we proceed to game even if data channel didn't open properly
+                                        // If data channel is already open, setupDataChannel will have been called
+                                        // If not, we need to hide modal and show ship selection anyway
+                                        if (!dataChannel || dataChannel.readyState !== "open") {
+                                            console.log('Data channel not open but proceeding - forcing modal hide and game load');
+                                            hideWebRTCModal();
+                                            showShipSelectionModal();
+                                        }
+                                    } catch (error) {
+                                        console.error('Connection error:', error);
+                                        showToast(`Connection error: ${error.message}`, "error");
+                                        logStatus("Connection failed");
+                                    }
+                                } catch (e) {
+                                    showToast("Failed to set answer SDP", "error");
+                                    console.error(e);
+                                }
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Polling error:', error);
+                    }
+                }, 1000);
+            }
+
+            function sendMessage(obj) {
+                dataChannel.send(JSON.stringify(obj));
+            }
+
+            document.getElementById("btnCreateSession").onclick = async () => {
+                isOfferer = true;
+                initPeer();
+                dataChannel = pc.createDataChannel("battleship");
+                setupDataChannel();
+
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                logStatus("Creating offer...");
+
+                document.getElementById("sessionDialog").style.display = "none";
+                showOfferSection();
+
+                // Store offer and get key for polling
+                setTimeout(async () => {
+                    const offerKey = document.getElementById("localKey").textContent;
+                    if (offerKey && offerKey !== "Generating key...") {
+                        // Start polling for answer immediately
+                        await startPollingForAnswer(offerKey);
+                    }
+                }, 2000); // Wait for the offer to be stored
+            }
+
+                ;
+
+            document.getElementById("btnJoinSession").onclick = () => {
+                isOfferer = false;
+                initPeer();
+                logStatus("Awaiting SDP input...");
+
+                document.getElementById("sessionDialog").style.display = "none";
+                showAnswerInputSection();
+            }
+
+                ;
+
+            document.getElementById("btnCopyOfferKey").onclick = () => {
                 const key = document.getElementById("localKey").textContent;
+
+                if (key) {
+                    copyToClipboard(key);
+                    showToast("Offer key copied to clipboard!", "success");
+                }
+            };
+
+            document.getElementById("refreshAnswer").addEventListener(
+                "click",
+                async () => {
+                    const key = document.getElementById("localKey").textContent;
+                    if (!key) {
+                        showToast("No session key available.", "error");
+                        return;
+                    }
+
+                    await startPollingForAnswer(key);
+                }
+            );
+
+            document.getElementById("btnSetRemoteAnswerKey").onclick = async () => {
+                const key = document.getElementById("remoteKey2").value.trim();
+
                 if (!key) {
-                    showToast("No session key available.", "error");
+                    showToast("Please enter a key", "error");
                     return;
                 }
 
-                await startPollingForAnswer(key);
-            }
-        );
+                // Initialize peer connection if not already done
+                if (!pc) {
+                    console.log('Answerer: Initializing peer connection');
+                    isOfferer = false;
+                    initPeer();
+                }
 
-        document.getElementById("btnSetRemoteAnswerKey").onclick = async () => {
-            const key = document.getElementById("remoteKey2").value.trim();
+                logStatus("Retrieving offer SDP...");
+                const sdpObject = await retrieveSDP(key);
+                console.log('Answerer retrieved SDP:', sdpObject ? `Type: ${sdpObject.type}, has SDP: ${!!sdpObject.sdp}` : 'null');
+                if (sdpObject && sdpObject.type && sdpObject.sdp) {
+                    try {
+                        console.log('Answerer setting remote description (offer)');
+                        await pc.setRemoteDescription(new RTCSessionDescription(sdpObject));
+                        showToast("Offer SDP accepted!", "success");
+                        console.log('Answerer remote description set, now creating answer');
 
-            if (!key) {
-                showToast("Please enter a key", "error");
-                return;
-            }
+                        if (!pc.localDescription) {
+                            logStatus("Creating answer SDP...");
+                            const answer = await pc.createAnswer();
+                            console.log('Answerer answer created:', answer ? `Type: ${answer.type}` : 'null');
+                            await pc.setLocalDescription(answer);
+                            console.log('Answerer local description set (answer)');
 
-            // Initialize peer connection if not already done
-            if (!pc) {
-                console.log('Answerer: Initializing peer connection');
-                isOfferer = false;
-                initPeer();
-            }
+                            // Wait for ICE gathering to complete before storing answer
+                            // This ensures the answer SDP includes all ICE candidates
+                            logStatus("Waiting for ICE gathering to complete...");
 
-            logStatus("Retrieving offer SDP...");
-            const sdpObject = await retrieveSDP(key);
-            console.log('Answerer retrieved SDP:', sdpObject ? `Type: ${sdpObject.type}, has SDP: ${!!sdpObject.sdp}` : 'null');
-            if (sdpObject && sdpObject.type && sdpObject.sdp) {
-                try {
-                    console.log('Answerer setting remote description (offer)');
-                    await pc.setRemoteDescription(new RTCSessionDescription(sdpObject));
-                    showToast("Offer SDP accepted!", "success");
-                    console.log('Answerer remote description set, now creating answer');
+                            let gatheredCandidates = 0;
+                            const candidatePromise = new Promise((resolve) => {
+                                const checkIceState = () => {
+                                    console.log('Answerer ICE gathering state:', pc.iceGatheringState, 'candidates:', gatheredCandidates);
+                                    if (pc.iceGatheringState === "complete") {
+                                        pc.removeEventListener("icegatheringstatechange", checkIceState);
+                                        resolve();
+                                    }
+                                };
 
-                    if (!pc.localDescription) {
-                        logStatus("Creating answer SDP...");
-                        const answer = await pc.createAnswer();
-                        console.log('Answerer answer created:', answer ? `Type: ${answer.type}` : 'null');
-                        await pc.setLocalDescription(answer);
-                        console.log('Answerer local description set (answer)');
+                                // Track candidates as they arrive
+                                const onCandidate = (event) => {
+                                    if (event.candidate) {
+                                        gatheredCandidates++;
+                                        console.log(`Answerer candidate ${gatheredCandidates}:`, {
+                                            address: event.candidate.address,
+                                            port: event.candidate.port,
+                                            type: event.candidate.type,
+                                            protocol: event.candidate.protocol
+                                        });
+                                    }
+                                };
 
-                        // Wait for ICE gathering to complete before storing answer
-                        // This ensures the answer SDP includes all ICE candidates
-                        logStatus("Waiting for ICE gathering to complete...");
+                                pc.addEventListener("icecandidate", onCandidate);
 
-                        let gatheredCandidates = 0;
-                        const candidatePromise = new Promise((resolve) => {
-                            const checkIceState = () => {
-                                console.log('Answerer ICE gathering state:', pc.iceGatheringState, 'candidates:', gatheredCandidates);
+                                // Check if already complete
                                 if (pc.iceGatheringState === "complete") {
-                                    pc.removeEventListener("icegatheringstatechange", checkIceState);
+                                    console.log('Answerer ICE gathering already complete with', gatheredCandidates, 'candidates');
+                                    pc.removeEventListener("icecandidate", onCandidate);
                                     resolve();
+                                } else {
+                                    pc.addEventListener("icegatheringstatechange", checkIceState);
                                 }
-                            };
-
-                            // Track candidates as they arrive
-                            const onCandidate = (event) => {
-                                if (event.candidate) {
-                                    gatheredCandidates++;
-                                    console.log(`Answerer candidate ${gatheredCandidates}:`, {
-                                        address: event.candidate.address,
-                                        port: event.candidate.port,
-                                        type: event.candidate.type,
-                                        protocol: event.candidate.protocol
-                                    });
-                                }
-                            };
-
-                            pc.addEventListener("icecandidate", onCandidate);
-
-                            // Check if already complete
-                            if (pc.iceGatheringState === "complete") {
-                                console.log('Answerer ICE gathering already complete with', gatheredCandidates, 'candidates');
-                                pc.removeEventListener("icecandidate", onCandidate);
-                                resolve();
-                            } else {
-                                pc.addEventListener("icegatheringstatechange", checkIceState);
-                            }
-                        });
-
-                        await candidatePromise;
-                        console.log('Answerer ICE gathering complete with', gatheredCandidates, 'total candidates, now storing answer with all candidates');
-                        showToast('Answerer ICE gathering complete with', gatheredCandidates, 'total candidates, now storing answer with all candidates', "success");
-
-                        // Auto-create answer and overwrite the offer SDP with it
-                        logStatus("Auto-storing answer SDP to overwrite offer...");
-                        const overwriteUrl = `${getSdpServiceBaseUrl()}/store/${key}`;
-                        console.log('Answerer POSTing answer to:', overwriteUrl);
-                        try {
-                            const response = await fetch(overwriteUrl, {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                },
-                                body: JSON.stringify(pc.localDescription)
                             });
 
-                            console.log('Answerer POST response status:', response.status, response.ok);
-                            if (response.ok) {
-                                const responseData = await response.json();
-                                console.log('Answerer POST response:', responseData);
-                                showToast("✓ Answer SDP stored! Connection establishing...", "success");
-                                logStatus("Answer SDP stored. Waiting for data channel to open...");
+                            await candidatePromise;
+                            console.log('Answerer ICE gathering complete with', gatheredCandidates, 'total candidates, now storing answer with all candidates');
+                            showToast('Answerer ICE gathering complete with', gatheredCandidates, 'total candidates, now storing answer with all candidates', "success");
 
-                                // Don't explicitly wait - the data channel will open naturally via ondatachannel
-                                // and setupDataChannel() will be called, which hides the modal and shows the game
-                                // The offerer will retrieve this answer and set it as remote description,
-                                // which will trigger the connection process and eventually open the data channel
-                            } else {
-                                console.error('Answerer POST failed with status:', response.status);
-                                showToast("Failed to overwrite offer with answer SDP", "error");
+                            // Auto-create answer and overwrite the offer SDP with it
+                            logStatus("Auto-storing answer SDP to overwrite offer...");
+                            const overwriteUrl = `${getSdpServiceBaseUrl()}/store/${key}`;
+                            console.log('Answerer POSTing answer to:', overwriteUrl);
+                            try {
+                                const response = await fetch(overwriteUrl, {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                    },
+                                    body: JSON.stringify(pc.localDescription)
+                                });
+
+                                console.log('Answerer POST response status:', response.status, response.ok);
+                                if (response.ok) {
+                                    const responseData = await response.json();
+                                    console.log('Answerer POST response:', responseData);
+                                    showToast("✓ Answer SDP stored! Connection establishing...", "success");
+                                    logStatus("Answer SDP stored. Waiting for data channel to open...");
+
+                                    // Don't explicitly wait - the data channel will open naturally via ondatachannel
+                                    // and setupDataChannel() will be called, which hides the modal and shows the game
+                                    // The offerer will retrieve this answer and set it as remote description,
+                                    // which will trigger the connection process and eventually open the data channel
+                                } else {
+                                    console.error('Answerer POST failed with status:', response.status);
+                                    showToast("Failed to overwrite offer with answer SDP", "error");
+                                }
+                            } catch (error) {
+                                console.error('Error overwriting SDP:', error);
+                                showToast("Failed to overwrite SDP. Check console.", "error");
                             }
-                        } catch (error) {
-                            console.error('Error overwriting SDP:', error);
-                            showToast("Failed to overwrite SDP. Check console.", "error");
+                        } else {
+                            console.log('Local description already exists, skipping answer creation');
                         }
-                    } else {
-                        console.log('Local description already exists, skipping answer creation');
+                    } catch (e) {
+                        console.error('Answerer error setting remote description or creating answer:', e);
+                        showToast("Failed to set remote SDP", "error");
+                        console.error(e);
                     }
-                } catch (e) {
-                    console.error('Answerer error setting remote description or creating answer:', e);
-                    showToast("Failed to set remote SDP", "error");
-                    console.error(e);
                 }
-            }
-        };
+            };
 
-        document.getElementById("btnApplyShips").onclick = () => {
-            if (selectedShips.size === 0) {
-                showToast("Please select at least one ship!", "error");
-                return;
-            }
+            document.getElementById("btnApplyShips").onclick = () => {
+                if (selectedShips.size === 0) {
+                    showToast("Please select at least one ship!", "error");
+                    return;
+                }
 
-            // Generate a new random placement for the preview
-            updateShipPreview();
-            // Apply the newly generated placement to the board
-            placeSelectedShips();
-            // Preview is now locked to the placement that was applied to the board
-            showToast("Ships placed! Preview locked.", "success");
-        }
-
-            ;
-
-        document.getElementById("btnAcceptShips").onclick = () => {
-            if (!shipsPlaced) {
-                showToast("Please click 'Apply & Random Place' first!", "error");
-                return;
+                // Generate a new random placement for the preview
+                updateShipPreview();
+                // Apply the newly generated placement to the board
+                placeSelectedShips();
+                // Preview is now locked to the placement that was applied to the board
+                showToast("Ships placed! Preview locked.", "success");
             }
 
-            if (selectedShips.size === 0) {
-                showToast("Please select at least one ship!", "error");
-                return;
-            }
+                ;
 
-            hideShipSelectionModal();
-            document.getElementById("gameControlsContainer").style.display = "none";
+            document.getElementById("btnAcceptShips").onclick = () => {
+                if (!shipsPlaced) {
+                    showToast("Please click 'Apply & Random Place' first!", "error");
+                    return;
+                }
 
-            weAreReady = true;
+                if (selectedShips.size === 0) {
+                    showToast("Please select at least one ship!", "error");
+                    return;
+                }
 
-            sendMessage({
-                type: "ready",
-                selectedShips: Array.from(selectedShips)
-            });
+                hideShipSelectionModal();
+                document.getElementById("gameControlsContainer").style.display = "none";
 
-            // If opponent is already ready, start the game immediately
-            if (opponentReady) {
-                isMyTurn = isOfferer;
-                if (isMyTurn) {
-                    setGameInfo("Game started! You attack first.");
+                weAreReady = true;
+
+                sendMessage({
+                    type: "ready",
+                    selectedShips: Array.from(selectedShips)
+                });
+
+                // If opponent is already ready, start the game immediately
+                if (opponentReady) {
+                    isMyTurn = isOfferer;
+                    if (isMyTurn) {
+                        setGameInfo("Game started! You attack first.");
+                    } else {
+                        setGameInfo("Game started! Opponent attacks first.");
+                    }
                 } else {
-                    setGameInfo("Game started! Opponent attacks first.");
+                    setGameInfo("You are ready. Waiting for opponent...");
                 }
-            } else {
-                setGameInfo("You are ready. Waiting for opponent...");
             }
-        }
 
-            ;
+                ;
 
-    </script>
+        </script>
 </body>
 
 </html>
