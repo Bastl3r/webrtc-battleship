@@ -1,6 +1,33 @@
-version: "3.0"
+version: "2.4"
+
 services:
+  turn:
+    image: coturn/coturn:latest
+    platform: linux/arm64
+    restart: unless-stopped
+    network_mode: "host"
+    volumes:
+      - ./coturn.conf:/etc/coturn/turnserver.conf:ro
+      - ./certs:/etc/coturn/certs:ro
+      - ./logs:/var/log/coturn
+      - ./entrypoint.sh:/entrypoint.sh:rw
+    entrypoint: ["sh","/entrypoint.sh"] # enables providing External IP dynamically
+
+
   battleship:
     image: battleship:latest
+    restart: unless-stopped
+    networks:
+      - webrtc-network
     ports:
       - "8443:8443"
+    volumes:
+      - ./certs:/app/certs:ro
+    environment:
+      - TURN_SERVER=turn
+      - TURN_PORT=3478
+      - TURN_TLS_PORT=5349
+
+networks:
+  webrtc-network:
+    driver: bridge

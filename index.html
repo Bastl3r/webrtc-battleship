@@ -446,6 +446,7 @@
                 <h3>Share this key with your peer:</h3>
                 <span id="localKey" class="sdp-display key-loading">Generating key...</span>
                 <button id="btnCopyOfferKey">📋 Copy Key to Clipboard</button>
+                <button id="refreshAnswer" class="btn btn-secondary mt-2">Refresh</button>
                 <p style="text-align: center; color: #666; margin: 15px 0;">Waiting for peer to accept the offer...</p>
             </div>
             <!-- Answerer: Input for Offer Key -->
@@ -1191,8 +1192,24 @@
         }
 
         function initPeer() {
-            // Use multiple STUN servers for redundancy and better same-network support
+            // Determine if we're behind a proxy or direct connection
+            const isHttps = window.location.protocol === 'https:';
+            const hostname = window.location.hostname;
+            const port = window.location.port || (isHttps ? 443 : 80);
+
+            // Local TURN server configuration (with fallback to public STUN servers)
+            // The TURN server provides crucial NAT traversal for mobile devices
             const iceServers = [
+                // Primary TURN server (handles NAT/firewall traversal)
+                {
+                    urls: [
+                        `turn:${hostname}:3478?transport=udp`
+                        //,`turns:${hostname}:5349?transport=udp`
+                    ],
+                    username: "webrtc",
+                    credential: "webrtcPassword123"
+                },
+                // Fallback STUN servers for direct connectivity
                 { urls: "stun:stun.l.google.com:19302" },
                 { urls: "stun:stun1.l.google.com:19302" },
                 { urls: "stun:stun2.l.google.com:19302" },
@@ -1205,7 +1222,10 @@
                 // These settings help with same-network P2P on mobile
                 iceCandidatePoolSize: 10,
                 bundlePolicy: "max-bundle",
-                rtcpMuxPolicy: "require"
+                rtcpMuxPolicy: "require",
+                // Enhanced ICE settings for mobile reliability
+                iceGatheringTimeout: 300000,
+                iceTransportPolicy: "all" // Try all candidates, not just relay
             });
 
             let candidateCount = 0;
@@ -1255,13 +1275,47 @@
 
             pc.oniceconnectionstatechange = () => {
                 console.log('ICE connection state:', pc.iceConnectionState, 'Connection state:', pc.connectionState);
-                showToast('ICE connection state:', pc.iceConnectionState, 'Connection state:', pc.connectionState);
+                showToast(`ICE: ${pc.iceConnectionState} | Conn: ${pc.connectionState}`);
                 logStatus(`ICE: ${pc.iceConnectionState}, Connection: ${pc.connectionState}, Data: ${dataChannel ? dataChannel.readyState : 'null'}`);
+
+                // Handle ICE connection failures for mobile
+                if (pc.iceConnectionState === 'failed') {
+                    console.error('ICE connection failed! Attempting restart...');
+                    showToast('⚠ ICE connection failed - checking TURN server...', 'error');
+                    // Restart ICE to force re-gathering with TURN server
+                    pc.restartIce();
+                }
+
+                // Log when entering disconnected state
+                if (pc.iceConnectionState === 'disconnected') {
+                    console.warn('ICE connection disconnected - may reconnect automatically');
+                    showToast('⚠ Connection temporarily disconnected', 'error');
+                }
             };
 
             pc.onconnectionstatechange = () => {
                 console.log('Connection state:', pc.connectionState, 'Data channel:', dataChannel ? dataChannel.readyState : 'null');
                 logStatus(`Connection: ${pc.connectionState}, Data: ${dataChannel ? dataChannel.readyState : 'null'}`);
+
+                // Handle connection state changes
+                if (pc.connectionState === 'failed') {
+                    console.error('Peer connection failed!');
+                    showToast('⚠ Peer connection failed - trying to reconnect...', 'error');
+                    // Attempt to restart ICE
+                    try {
+                        pc.restartIce();
+                    } catch (e) {
+                        console.error('Could not restart ICE:', e);
+                    }
+                } else if (pc.connectionState === 'closed') {
+                    console.warn('Peer connection closed');
+                    showToast('Connection closed', 'error');
+                }
+            };
+
+            pc.onicecandidateerror = (event) => {
+                console.error('ICE candidate error:', event.errorCode, event.errorText);
+                // Log error but don't treat as fatal - candidates can fail individually
             };
 
             pc.ondatachannel = (e) => {
@@ -1341,19 +1395,39 @@
                                         }
                                     }, 5000);
 
+                                    // More aggressive timeout for mobile: 30 seconds instead of 5 minutes
+                                    // This helps detect hanging issues faster and allows retry
                                     const timeout = setTimeout(() => {
                                         if (!resolved) {
                                             clearInterval(progressInterval);
-                                            console.warn('Data channel timeout (5 minutes) - proceeding anyway if descriptions are set');
+                                            console.warn('Data channel timeout (30 seconds) - connection may need restart');
                                             console.log('Final states - Connection:', pc.connectionState, 'ICE:', pc.iceConnectionState, 'Data channel:', dataChannel ? dataChannel.readyState : 'null');
-                                            if (pc.localDescription && pc.remoteDescription) {
+
+                                            // Check if we're stuck in "connecting" state (common on mobile after SDP exchange)
+                                            if (pc.connectionState === 'connecting' || pc.iceConnectionState === 'checking' || pc.iceConnectionState === 'new') {
+                                                console.warn('Connection appears stuck in connecting state - attempting ICE restart');
+                                                showToast('⚠ Connection timeout - attempting to restart...', 'error');
+                                                try {
+                                                    pc.restartIce();
+                                                    // Give it another 10 seconds after restart
+                                                    const retryTimeout = setTimeout(() => {
+                                                        if (!resolved) {
+                                                            resolved = true;
+                                                            reject(new Error("Connection still unresponsive after ICE restart. Please reload and try again."));
+                                                        }
+                                                    }, 10000);
+                                                } catch (e) {
+                                                    console.error('Error restarting ICE:', e);
+                                                    reject(new Error("Timeout: Data channel didn't open after 30 seconds"));
+                                                }
+                                            } else if (pc.localDescription && pc.remoteDescription) {
                                                 resolved = true;
                                                 resolve(); // Proceed anyway if both descriptions are set
                                             } else {
-                                                reject(new Error("Timeout: Data channel didn't open after 5 minutes and descriptions incomplete"));
+                                                reject(new Error("Timeout: Data channel didn't open after 30 seconds and descriptions incomplete"));
                                             }
                                         }
-                                    }, 300000); // 5 minute timeout (300000 ms)
+                                    }, 300000); //  5 minutes
 
                                     // Check if data channel already exists and is open
                                     if (dataChannel && dataChannel.readyState === "open") {
@@ -1481,6 +1555,19 @@
             }
         };
 
+        document.getElementById("refreshAnswer").addEventListener(
+            "click",
+            async () => {
+                const key = document.getElementById("localKey").textContent;
+                if (!key) {
+                    showToast("No session key available.", "error");
+                    return;
+                }
+
+                await startPollingForAnswer(key);
+            }
+        );
+
         document.getElementById("btnSetRemoteAnswerKey").onclick = async () => {
             const key = document.getElementById("remoteKey2").value.trim();
 
@@ -1554,6 +1641,7 @@
 
                         await candidatePromise;
                         console.log('Answerer ICE gathering complete with', gatheredCandidates, 'total candidates, now storing answer with all candidates');
+                        showToast('Answerer ICE gathering complete with', gatheredCandidates, 'total candidates, now storing answer with all candidates', "success");
 
                         // Auto-create answer and overwrite the offer SDP with it
                         logStatus("Auto-storing answer SDP to overwrite offer...");
